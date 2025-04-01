@@ -497,10 +497,14 @@ func providerConfigure(p *schema.Provider) schema.ConfigureContextFunc {
 	}
 }
 
+func BuildClient(ctx context.Context, p *schema.Provider, d *schema.ResourceData, authConfig *auth.Credentials) (*clients.Client, diag.Diagnostics) {
+	return buildClient(ctx, p, d, authConfig)
+}
+
 // buildClient is used to configure behavioral aspects of the provider. To configure the
 // cloud environment and authentication-related settings, use the providerConfigure function.
 func buildClient(ctx context.Context, p *schema.Provider, d *schema.ResourceData, authConfig *auth.Credentials) (*clients.Client, diag.Diagnostics) {
-	providerRegistrations := d.Get("resource_provider_registrations").(string)
+	providerRegistrations := "none" // d.Get("resource_provider_registrations").(string)
 
 	// TODO: Remove in v5.0
 	if d.Get("skip_provider_registration").(bool) {
