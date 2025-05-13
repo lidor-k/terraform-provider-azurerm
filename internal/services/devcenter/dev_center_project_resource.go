@@ -11,9 +11,10 @@ import (
 	"github.com/hashicorp/go-azure-helpers/lang/pointer"
 	"github.com/hashicorp/go-azure-helpers/lang/response"
 	"github.com/hashicorp/go-azure-helpers/resourcemanager/commonschema"
+	"github.com/hashicorp/go-azure-helpers/resourcemanager/identity"
 	"github.com/hashicorp/go-azure-helpers/resourcemanager/location"
 	"github.com/hashicorp/go-azure-helpers/resourcemanager/tags"
-	"github.com/hashicorp/go-azure-sdk/resource-manager/devcenter/2023-04-01/projects"
+	"github.com/hashicorp/go-azure-sdk/resource-manager/devcenter/2025-02-01/projects"
 	"github.com/hashicorp/terraform-provider-azurerm/internal/sdk"
 	"github.com/hashicorp/terraform-provider-azurerm/internal/tf/pluginsdk"
 )
@@ -30,14 +31,15 @@ func (r DevCenterProjectResource) ModelObject() interface{} {
 }
 
 type DevCenterProjectResourceSchema struct {
-	Description            string                 `tfschema:"description"`
-	DevCenterId            string                 `tfschema:"dev_center_id"`
-	DevCenterUri           string                 `tfschema:"dev_center_uri"`
-	Location               string                 `tfschema:"location"`
-	MaximumDevBoxesPerUser int64                  `tfschema:"maximum_dev_boxes_per_user"`
-	Name                   string                 `tfschema:"name"`
-	ResourceGroupName      string                 `tfschema:"resource_group_name"`
-	Tags                   map[string]interface{} `tfschema:"tags"`
+	Description            string                                     `tfschema:"description"`
+	DevCenterId            string                                     `tfschema:"dev_center_id"`
+	DevCenterUri           string                                     `tfschema:"dev_center_uri"`
+	Identity               []identity.ModelSystemAssignedUserAssigned `tfschema:"identity"`
+	Location               string                                     `tfschema:"location"`
+	MaximumDevBoxesPerUser int64                                      `tfschema:"maximum_dev_boxes_per_user"`
+	Name                   string                                     `tfschema:"name"`
+	ResourceGroupName      string                                     `tfschema:"resource_group_name"`
+	Tags                   map[string]interface{}                     `tfschema:"tags"`
 }
 
 func (r DevCenterProjectResource) IDValidationFunc() pluginsdk.SchemaValidateFunc {
@@ -67,6 +69,7 @@ func (r DevCenterProjectResource) Arguments() map[string]*pluginsdk.Schema {
 			Optional: true,
 			Type:     pluginsdk.TypeString,
 		},
+		"identity": commonschema.SystemAssignedUserAssignedIdentityOptional(),
 		"maximum_dev_boxes_per_user": {
 			Optional: true,
 			Type:     pluginsdk.TypeInt,
@@ -88,7 +91,7 @@ func (r DevCenterProjectResource) Create() sdk.ResourceFunc {
 	return sdk.ResourceFunc{
 		Timeout: 30 * time.Minute,
 		Func: func(ctx context.Context, metadata sdk.ResourceMetaData) error {
-			client := metadata.Client.DevCenter.V20230401.Projects
+			client := metadata.Client.DevCenter.V20250201.Projects
 
 			var config DevCenterProjectResourceSchema
 			if err := metadata.Decode(&config); err != nil {
@@ -114,12 +117,18 @@ func (r DevCenterProjectResource) Create() sdk.ResourceFunc {
 			payload.Location = location.Normalize(config.Location)
 			payload.Tags = tags.Expand(config.Tags)
 
+			identity, err := identity.ExpandSystemAndUserAssignedMapFromModel(config.Identity)
+			if err != nil {
+				return fmt.Errorf("expanding `identity`: %+v", err)
+			}
+			payload.Identity = identity
+
 			if payload.Properties == nil {
 				payload.Properties = &projects.ProjectProperties{}
 			}
 
 			payload.Properties.Description = &config.Description
-			payload.Properties.DevCenterId = config.DevCenterId
+			payload.Properties.DevCenterId = &config.DevCenterId
 			payload.Properties.MaxDevBoxesPerUser = &config.MaximumDevBoxesPerUser
 
 			if err := client.CreateOrUpdateThenPoll(ctx, id, payload); err != nil {
@@ -136,7 +145,7 @@ func (r DevCenterProjectResource) Read() sdk.ResourceFunc {
 	return sdk.ResourceFunc{
 		Timeout: 5 * time.Minute,
 		Func: func(ctx context.Context, metadata sdk.ResourceMetaData) error {
-			client := metadata.Client.DevCenter.V20230401.Projects
+			client := metadata.Client.DevCenter.V20250201.Projects
 			schema := DevCenterProjectResourceSchema{}
 
 			id, err := projects.ParseProjectID(metadata.ResourceData.Id())
@@ -158,9 +167,15 @@ func (r DevCenterProjectResource) Read() sdk.ResourceFunc {
 				schema.Location = location.Normalize(model.Location)
 				schema.Tags = tags.Flatten(model.Tags)
 
+				identity, err := identity.FlattenSystemAndUserAssignedMapToModel(model.Identity)
+				if err != nil {
+					return fmt.Errorf("flattening `identity`: %v", err)
+				}
+				schema.Identity = pointer.From(identity)
+
 				if props := model.Properties; props != nil {
 					schema.Description = pointer.From(props.Description)
-					schema.DevCenterId = props.DevCenterId
+					schema.DevCenterId = pointer.From(props.DevCenterId)
 					schema.DevCenterUri = pointer.From(props.DevCenterUri)
 					schema.MaximumDevBoxesPerUser = pointer.From(props.MaxDevBoxesPerUser)
 				}
@@ -175,7 +190,7 @@ func (r DevCenterProjectResource) Delete() sdk.ResourceFunc {
 	return sdk.ResourceFunc{
 		Timeout: 30 * time.Minute,
 		Func: func(ctx context.Context, metadata sdk.ResourceMetaData) error {
-			client := metadata.Client.DevCenter.V20230401.Projects
+			client := metadata.Client.DevCenter.V20250201.Projects
 
 			id, err := projects.ParseProjectID(metadata.ResourceData.Id())
 			if err != nil {
@@ -195,7 +210,7 @@ func (r DevCenterProjectResource) Update() sdk.ResourceFunc {
 	return sdk.ResourceFunc{
 		Timeout: 30 * time.Minute,
 		Func: func(ctx context.Context, metadata sdk.ResourceMetaData) error {
-			client := metadata.Client.DevCenter.V20230401.Projects
+			client := metadata.Client.DevCenter.V20250201.Projects
 
 			id, err := projects.ParseProjectID(metadata.ResourceData.Id())
 			if err != nil {
@@ -211,6 +226,14 @@ func (r DevCenterProjectResource) Update() sdk.ResourceFunc {
 
 			if metadata.ResourceData.HasChanges("tags") {
 				payload.Tags = tags.Expand(config.Tags)
+			}
+
+			if metadata.ResourceData.HasChange("identity") {
+				identity, err := identity.ExpandSystemAndUserAssignedMapFromModel(config.Identity)
+				if err != nil {
+					return err
+				}
+				payload.Identity = identity
 			}
 
 			if payload.Properties == nil {
