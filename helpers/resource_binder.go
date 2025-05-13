@@ -20,25 +20,51 @@ import (
 	"github.com/hashicorp/terraform-provider-azurerm/internal/provider"
 )
 
-func ReadResource(resource_type string, id string) (any, error) {
+type AzureCertificateCreds struct {
+	ClientID              string
+	ClientCertificateData []byte
+	TenantID              string
+}
+
+func ReadResource(resource_type string, id string, creds *AzureCertificateCreds) (any, error) {
 	p := provider.AzureProvider()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	p.ConfigureContextFunc = func(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
-		envName := d.Get("environment").(string)
-		env, err := environments.FromName(envName)
-		if err != nil {
-			log.Fatalf("configuring environment %q: %v", envName, err)
-		}
+	if creds == nil {
+		p.ConfigureContextFunc = func(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
+			envName := d.Get("environment").(string)
+			env, err := environments.FromName(envName)
+			if err != nil {
+				log.Fatalf("configuring environment %q: %v", envName, err)
+			}
 
-		authConfig := &auth.Credentials{
-			Environment:                       *env,
-			EnableAuthenticatingUsingAzureCLI: true,
-			AzureCliSubscriptionIDHint:        d.Get("subscription_id").(string),
-		}
+			authConfig := &auth.Credentials{
+				Environment:                       *env,
+				EnableAuthenticatingUsingAzureCLI: true,
+				AzureCliSubscriptionIDHint:        d.Get("subscription_id").(string),
+			}
 
-		return provider.BuildClient(ctx, p, d, authConfig)
+			return provider.BuildClient(ctx, p, d, authConfig)
+		}
+	} else {
+		p.ConfigureContextFunc = func(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
+			envName := d.Get("environment").(string)
+			env, err := environments.FromName(envName)
+			if err != nil {
+				log.Fatalf("configuring environment %q: %v", envName, err)
+			}
+
+			authConfig := &auth.Credentials{
+				Environment:           *env,
+				ClientID:              creds.ClientID,
+				ClientCertificateData: creds.ClientCertificateData,
+				TenantID:              creds.TenantID,
+				EnableAuthenticatingUsingClientCertificate: true,
+			}
+
+			return provider.BuildClient(ctx, p, d, authConfig)
+		}
 	}
 
 	if diags := p.Configure(ctx, terraform.NewResourceConfigRaw(nil)); diags != nil && diags.HasError() {
