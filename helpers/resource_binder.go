@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/go-azure-sdk/sdk/auth"
@@ -54,6 +55,12 @@ func ReadResource(resource_type string, id string, creds *AzureCertificateCreds)
 			if err != nil {
 				log.Fatalf("configuring environment %q: %v", envName, err)
 			}
+
+			subscriptionId, err := getCloudProviderScopeFromResourceId(id)
+			if err != nil {
+				log.Fatalf("failed to get subscription ID from resource ID %s: %v", id, err)
+			}
+			d.Set("subscription_id", subscriptionId)
 
 			authConfig := &auth.Credentials{
 				Environment:           *env,
@@ -108,6 +115,17 @@ func ReadResource(resource_type string, id string, creds *AzureCertificateCreds)
 	}
 
 	return attr, nil
+}
+
+func getCloudProviderScopeFromResourceId(resourceId string) (string, error) {
+	// Assuming the resource ID format is "/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/{resourceProvider}/{resourceType}/{resourceName}"
+	parts := strings.Split(resourceId, "/")
+	if len(parts) < 2 {
+		return "", fmt.Errorf("invalid resource ID format: %s", resourceId)
+	}
+
+	// Return subscription ID as the scope
+	return parts[2], nil
 }
 
 func normalizeTypesOfCtyJson(jsonValue map[string]any, jsonType cty.Type) map[string]any {
