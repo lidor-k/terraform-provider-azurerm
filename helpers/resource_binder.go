@@ -13,7 +13,6 @@ import (
 	"github.com/hashicorp/go-azure-sdk/sdk/auth"
 	"github.com/hashicorp/go-azure-sdk/sdk/environments"
 	"github.com/hashicorp/go-cty/cty"
-	ctyjson "github.com/hashicorp/go-cty/cty/json"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
@@ -103,11 +102,6 @@ func ReadResource(resource_type string, id string, creds *AzureCertificateCreds)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get attributes as object value: %v", err)
 	}
-	jsondata_something, err := ctyjson.Marshal(attr_value, resource.CoreConfigSchema().ImpliedType())
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal data: %v", err)
-	}
-	log.Printf("SOMETHINGSOMETHING %s with ID %s", id, jsondata_something)
 
 	attr := normalizeTypesOfCtyJson(convertCtyValue(attr_value).(map[string]any), resource.CoreConfigSchema().ImpliedType())
 	if attr == nil {
